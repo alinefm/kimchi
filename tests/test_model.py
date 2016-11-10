@@ -22,23 +22,22 @@ import __builtin__ as builtins
 
 import base64
 import grp
+import json
 import lxml.etree as ET
+import mock
 import os
 import pwd
-import mock
 import re
 import shutil
 import time
 import unittest
-
-from mock import call, mock_open, patch
 
 import tests.utils as utils
 
 import wok.objectstore
 from wok.asynctask import AsyncTask
 from wok.basemodel import Singleton
-from wok.config import config
+from wok.config import config, PluginPaths
 from wok.exception import InvalidOperation
 from wok.exception import InvalidParameter, NotFoundError, OperationFailed
 from wok.rollbackcontext import RollbackContext
@@ -96,6 +95,25 @@ def setUpModule():
 
 def tearDownModule():
     shutil.rmtree(TMP_DIR)
+
+
+def get_remote_iso_path():
+    """
+    Get a remote iso with the right arch from the distro files shipped
+    with kimchi.
+    """
+    host_arch = os.uname()[4]
+    remote_path = ''
+    with open(os.path.join(PluginPaths('kimchi').conf_dir, 'distros.d',
+                   'fedora.json')) as fedora_isos:
+        # Get a list of dicts
+        json_isos_list = json.load(fedora_isos)
+        for iso in json_isos_list:
+            if (iso.get('os_arch')) == host_arch:
+                remote_path = iso.get('path')
+                break
+
+    return remote_path
 
 
 def _setDiskPoolDefault():
@@ -387,8 +405,8 @@ class ModelTests(unittest.TestCase):
 
         vvmodel = VMVirtViewerFileModel(conn=None)
 
-        open_ = mock_open(read_data='')
-        with patch.object(builtins, 'open', open_):
+        open_ = mock.mock_open(read_data='')
+        with mock.patch.object(builtins, 'open', open_):
             vvfilepath = vvmodel.lookup('kimchi-vm')
 
         self.assertEqual(
@@ -399,7 +417,7 @@ class ModelTests(unittest.TestCase):
         expected_write_content = "[virt-viewer]\ntype=vnc\n"\
             "host=kimchi-test-host\nport=5999\n"
         self.assertEqual(
-            open_().write.mock_calls, [call(expected_write_content)]
+            open_().write.mock_calls, [mock.call(expected_write_content)]
         )
 
         mock_get_graphics.assert_called_once_with('kimchi-vm', None)
@@ -430,8 +448,8 @@ class ModelTests(unittest.TestCase):
 
         vvmodel = VMVirtViewerFileModel(conn=None)
 
-        open_ = mock_open(read_data='')
-        with patch.object(builtins, 'open', open_):
+        open_ = mock.mock_open(read_data='')
+        with mock.patch.object(builtins, 'open', open_):
             vvfilepath = vvmodel.lookup('kimchi-vm')
 
         self.assertEqual(
@@ -442,7 +460,7 @@ class ModelTests(unittest.TestCase):
         expected_write_content = "[virt-viewer]\ntype=spice\n"\
             "host=kimchi-test-host\nport=6660\npassword=spicepasswd\n"
         self.assertEqual(
-            open_().write.mock_calls, [call(expected_write_content)]
+            open_().write.mock_calls, [mock.call(expected_write_content)]
         )
 
         mock_get_graphics.assert_called_once_with('kimchi-vm', None)
@@ -464,9 +482,9 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(fw_manager.opened_ports, {})
 
         mock_run_cmd.assert_has_calls(
-            [call(['firewall-cmd', '--state', '-q']),
-             call(['firewall-cmd', '--add-port=5905/tcp']),
-             call(['firewall-cmd', '--remove-port=5905/tcp'])])
+            [mock.call(['firewall-cmd', '--state', '-q']),
+             mock.call(['firewall-cmd', '--add-port=5905/tcp']),
+             mock.call(['firewall-cmd', '--remove-port=5905/tcp'])])
 
     @mock.patch('wok.plugins.kimchi.model.virtviewerfile.run_command')
     def test_firewall_provider_ufw(self, mock_run_cmd):
@@ -482,10 +500,10 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(fw_manager.opened_ports, {})
 
         mock_run_cmd.assert_has_calls(
-            [call(['firewall-cmd', '--state', '-q']),
-             call(['ufw', 'status']),
-             call(['ufw', 'allow', '5905/tcp']),
-             call(['ufw', 'deny', '5905/tcp'])])
+            [mock.call(['firewall-cmd', '--state', '-q']),
+             mock.call(['ufw', 'status']),
+             mock.call(['ufw', 'allow', '5905/tcp']),
+             mock.call(['ufw', 'deny', '5905/tcp'])])
 
     @mock.patch('wok.plugins.kimchi.model.virtviewerfile.run_command')
     def test_firewall_provider_iptables(self, mock_run_cmd):
@@ -507,9 +525,9 @@ class ModelTests(unittest.TestCase):
                         5905, '-j', 'ACCEPT']
 
         mock_run_cmd.assert_has_calls(
-            [call(['firewall-cmd', '--state', '-q']),
-             call(['ufw', 'status']),
-             call(iptables_add), call(iptables_del)])
+            [mock.call(['firewall-cmd', '--state', '-q']),
+             mock.call(['ufw', 'status']),
+             mock.call(iptables_add), mock.call(iptables_del)])
 
     @unittest.skipUnless(utils.running_as_root(), 'Must be run as root')
     @mock.patch('wok.plugins.kimchi.model.virtviewerfile.'
@@ -866,7 +884,7 @@ class ModelTests(unittest.TestCase):
             self.assertEquals(prev_count, len(storage_list))
 
             # Create a new cdrom using a remote iso
-            valid_remote_iso_path = utils.get_remote_iso_path()
+            valid_remote_iso_path = get_remote_iso_path()
             cdrom_args = {"type": "cdrom",
                           "path": valid_remote_iso_path}
             cdrom_dev = inst.vmstorages_create(vm_name, cdrom_args)
